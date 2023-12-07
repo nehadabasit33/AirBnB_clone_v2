@@ -1,62 +1,55 @@
 #!/usr/bin/env bash
-# sets up the web servers for the deployment of web_static
+# This script sets up web servers for the AirBnB Clone - Deploy Static project
 
-# update the package lists
-sudo apt-get -y update
+# Check if Nginx is installed, and install it if not
+if ! dpkg -l nginx >/dev/null 2>&1; then
+    sudo apt-get update
+    sudo apt-get -y install nginx
+fi
 
-# install nginx
-sudo apt-get -y install nginx
+# Create all directories and subdirectories for the static files
+sudo mkdir -p /data/web_static/shared/
+sudo mkdir -p /data/web_static/releases/test/
 
-# make directories for the deployment using -p to create all parent directories if not existing
-sudo mkdir -p /data/web_static/releases/test 
-sudo mkdir -p /data/web_static/shared
+html_data="<html>
+  <head>
+  </head>
+  <body>
+    <h1>Welcome to Nehad Tech!</h1>
+    <p>This is a test page</p>
+  </body>
+</html>"
 
-# give ownership of the /data/ directory to the ubuntu user 
-sudo chown -R ubuntu /data/
+# Create a test html file
+echo "${html_data}" | sudo tee /data/web_static/releases/test/index.html > /dev/null
 
-# give group ownership of the /data/ directory to the ubuntu user
-sudo chgrp -R ubuntu /data/
-
-# create a test HTML file
-echo "Testing! Testing 1 , 2  1 , 2" > /data/web_static/releases/test/index.html
-
-# create a symbolic link to the test HTML file
-#---'ln -s' creates a symbolic link
-#---'f' forces the symbolic link to be created if the target already exists, hence overwriting whenever target file is updated
+# Create or recreate the symbolic link (deleting the existing one if it exists)
 sudo ln -sf /data/web_static/releases/test/ /data/web_static/current
 
-# server name not specified
-# listen to port 80
-# [::] listens to IPv6 connections
-# add_header adds a header to the response indicating the server name $HOSTNAME
-# root is the root directory of the server where nginx will look for files to serve
-# index is the default file that nginx will serve if no file is specified in the URL
-# location is the path to the content to be served '/hbnb_static' path to url - https://mydomain.com/hbnb_static
-# alias is the path to the content to be served '/data/web_static/current'. check how to use 'root' and 'alias' in nginx
-# return 301 redirects the client to another URL
-# error_page 404 is the path to the custom 404 page
-# internal is used to prevent nginx from serving the page to the client
-printf %s "server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    add_header X-Served-By $HOSTNAME;
-    root   /var/www/html;
-    index  index.html index.htm index.nginx-debian.html;
+# Change owner and group for for the `/data/` directory
+sudo chown -R ubuntu:ubuntu /data/
 
-    location /hbnb_static {
-        alias /data/web_static/current;
-        index index.html index.htm index.nginx-debian.html 8-index.html;
-    }
+# Configuration to add
+config_to_add="    location /hbnb_static/ {
+        alias /data/web_static/current/;
+        index index.html;
+        # Enable directory listing (if desired)
+        # autoindex on;
+    }"
 
-    location /redirect_me {
-        return 301 https://twitter.com/ai_optimizer;
-    }
+# Path to the Nginx configuration file
+nginx_config="/etc/nginx/sites-available/default"
 
-    error_page 404 /error_404.html;
-    location /404 {
-      root /var/www/html;
-      internal;
-    }
-}" > /etc/nginx/sites-available/default
+
+# Check if the configuration already exists
+if ! grep -q "location /hbnb_static/" "$nginx_config"; then
+    # Configuration does not exist, add it using awk
+    sudo awk -v config="$config_to_add" '/^}$/ {print config} {print} ' "$nginx_config" > temp && mv temp "$nginx_config"
+    # sudo awk -v config="$config_to_add" '/^}$/ {print config} {print} ' "$nginx_config" | sudo tee "$nginx_config" > /dev/null
+
+    echo "Configuration added."
+else
+    echo "Configuration already exists."
+fi
 
 sudo service nginx restart
